@@ -1,5 +1,5 @@
 ---
-name: plan-delivery
+name: principles-plan-delivery
 description: Principles for multi-step work. Use when planning a phased rewrite or migration, a sweep of similar edits, how to stack commits or PRs, non-trivial work a script or codemod could do, or a correction you have now given twice.
 user-invocable: false
 ---

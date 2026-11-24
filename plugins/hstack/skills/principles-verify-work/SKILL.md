@@ -1,5 +1,5 @@
 ---
-name: verify-work
+name: principles-verify-work
 description: Principles for checking work. Use when debugging, writing or changing tests, measuring performance or eval results, when fixes keep failing, or before saying work is done.
 user-invocable: false
 ---

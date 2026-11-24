@@ -1,5 +1,5 @@
 ---
-name: design-data
+name: principles-design-data
 description: Principles for shaping data. Use before writing logic that picks types, data structures or signatures, validates input or handles errors, models state, must survive retries, or lets concurrent workers share state.
 user-invocable: false
 ---

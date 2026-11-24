@@ -1,5 +1,5 @@
 ---
-name: design-features
+name: principles-design-features
 description: Principles for deciding what to build. Use for product, UX, or feature-scope tradeoffs, a new interaction or architecture with no precedent in the codebase, or fitting a new requirement into an existing design.
 user-invocable: false
 ---

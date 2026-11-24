@@ -1,5 +1,5 @@
 ---
-name: refactor-code
+name: principles-refactor-code
 description: Principles for changing existing code. Use when refactoring or simplifying, sizing a diff, tempted to add an abstraction or layer, untangling code that is hard to trace, or replacing an internal API that still has callers.
 user-invocable: false
 ---
