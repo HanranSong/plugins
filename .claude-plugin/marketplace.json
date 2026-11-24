@@ -1,0 +1,13 @@
+{
+  "name": "hanran",
+  "owner": {
+    "name": "Hanran Song"
+  },
+  "plugins": [
+    {
+        "name": "hstack",
+        "source": "./plugins/hstack",
+        "description": "My agent workflows"
+    }
+  ]
+}
