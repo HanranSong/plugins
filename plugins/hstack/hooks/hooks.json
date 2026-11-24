@@ -1,5 +1,5 @@
 {
-  "description": "Keeps /hstack:dream's agents inside the run's transcripts and the project's .dreaming/memory/ directory.",
+  "description": "Keeps /hstack:dream's agents inside the run's transcripts and the project's .dreaming/memory/ directory, and points Claude at the attack-the-premise principle when the same command fails after two rounds of fixes.",
   "hooks": {
     "PreToolUse": [
       {
@@ -8,6 +8,30 @@
           {
             "type": "command",
             "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/dream_guard.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/premise_cue.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/premise_cue.py\"",
             "timeout": 10
           }
         ]
