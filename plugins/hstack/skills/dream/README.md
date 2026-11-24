@@ -10,6 +10,24 @@ cookbook (MIT License) to a Claude Code plugin. The analyzer's and organizer's p
 only its Managed Agents phrases changed. Everything that differs from the cookbook, and why, is in
 [MIGRATION.md](MIGRATION.md).
 
+## How a run works
+
+```mermaid
+flowchart TD
+  cmd(["/hstack:dream, in a new session"]) --> prep["dream.py prepare<br/>takes the sessions since the last complete run,<br/>writes one transcript per session, copies memory"]
+  prep -- "refused, or no new sessions" --> stop(["Stops and says why"])
+  subgraph wf ["dream-workflow"]
+    an["transcript-analyzer, one per transcript,<br/>in groups of about 20"] --> org["memory-organizer, once"]
+  end
+  prep -- "ready" --> wf
+  an -- "adds facts" --> mem[(".dreaming/memory/")]
+  org -- "tidies" --> mem
+  guard["hooks/dream_guard.py"] -. "fences in every agent" .-> wf
+  wf --> fin["dream.py finish<br/>writes the run's report. If a step failed,<br/>the next run takes the same sessions again"]
+```
+
+The details of each step are below.
+
 ## Requirements
 
 - Claude Code with dynamic workflows. On Pro, turn them on from the Dynamic workflows row in `/config`. The

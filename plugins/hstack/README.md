@@ -2,6 +2,24 @@
 
 My agent workflows, as a Claude Code plugin.
 
+Each part of hstack starts in one of three ways: you type a command, Claude picks a skill on its own, or a hook
+runs on one of Claude's tool calls.
+
+```mermaid
+flowchart LR
+  you(["You type a command"])
+  claude(["Claude picks a skill on its own"])
+  hooks(["A hook runs on Claude's tool calls"])
+
+  you --> so["/hstack:second-opinion<br/>a review prompt for another agent"]
+  you --> dream["/hstack:dream<br/>past sessions → .dreaming/memory/"]
+  you --> manual["/hstack:principle-*<br/>one principle, by hand"]
+  claude --> routers["principles-* routers<br/>picked by task"]
+  claude --> ts["typescript-best-practices<br/>offered for .ts and .tsx files"]
+  hooks --> cue["premise_cue.py<br/>when fixes keep failing"]
+  hooks --> guard["dream_guard.py<br/>fences in /hstack:dream's agents"]
+```
+
 | Command | What it does |
 | --- | --- |
 | `/hstack:second-opinion` | Writes a self-contained prompt asking another agent to review your uncommitted changes, or whatever you name after the command. Paste the reviewer's reply back, and Claude triages it, fixes what holds up and decides whether another round is worth it. It won't start more than 3 rounds on its own. |
@@ -16,7 +34,22 @@ for every other agent's tool calls.
 hstack carries the 24 engineering principles from [pstack](https://github.com/cursor/plugins/tree/main/pstack)
 (MIT, see [LICENSE-pstack](LICENSE-pstack)), one skill each in `skills/principle-*/`, plus two companions,
 `benchmark-checklist` and `typescript-best-practices`. Claude applies them on its own, without loading them all
-into every session. Three paths reach them.
+into every session. Three paths reach them on their own, and you can load any one by hand:
+
+```mermaid
+flowchart TD
+  start(["A session starts with the 5 routers' descriptions loaded, and none of the 24 principles"])
+  start --> q{"What happens?"}
+  q -- "the work matches a router" --> router["Claude loads that principles-* router:<br/>a table from situation to principle file"]
+  router --> pick["At each decision, Claude reads<br/>every file whose situation matches"]
+  q -- "Claude works with a .ts or .tsx file" --> ts["typescript-best-practices is offered,<br/>and it points to type-system-discipline"]
+  q -- "a command keeps failing after fixes" --> cue["premise_cue.py adds a note<br/>pointing to attack-the-premise"]
+  q -- "you type /hstack:principle-*" --> manual["That principle loads"]
+  pick --> file[("skills/principle-*/SKILL.md")]
+  ts --> file
+  cue -- "if the failure hasn't moved" --> file
+  manual --> file
+```
 
 **Routers, chosen by task.** Five skills in `skills/principles-*/` that only Claude invokes. Their short
 descriptions, about 1,000 characters together, are all that sits in every session. When the work matches one,
