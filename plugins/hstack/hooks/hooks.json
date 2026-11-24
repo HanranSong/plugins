@@ -1,0 +1,17 @@
+{
+  "description": "Keeps /hstack:dream's agents inside the run's transcripts and the project's .dreaming/memory/ directory.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Read|Write|Edit|Glob|Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/dream_guard.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
