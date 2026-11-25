@@ -12,6 +12,7 @@ flowchart LR
   hooks(["A hook runs on Claude's tool calls"])
 
   you --> so["/hstack:second-opinion<br/>a review prompt for another agent"]
+  you --> cs["/hstack:clean-slate<br/>a decision judged from scratch"]
   you --> dream["/hstack:dream<br/>past sessions → .dreaming/memory/"]
   you --> manual["/hstack:principle-*<br/>one principle, by hand"]
   claude --> routers["principles-* routers<br/>picked by task"]
@@ -23,6 +24,7 @@ flowchart LR
 | Command | What it does |
 | --- | --- |
 | `/hstack:second-opinion` | Writes a self-contained prompt asking another agent to review your uncommitted changes, or whatever you name after the command. Paste the reviewer's reply back, and Claude triages it, fixes what holds up and decides whether another round is worth it. It won't start more than 3 rounds on its own. |
+| `/hstack:clean-slate` | Judges a decision as if starting from scratch, instead of building on the current code, earlier choices or what you seem to prefer. Name the decision after the command, or leave it empty to use the options Claude just gave you. You get one recommendation, the earlier choices that tilted the options, and what switching would cost. The answer can still be to stay on the current path. It changes no files. |
 | `/hstack:dream` | Distills this project's recent Claude Code sessions into Markdown memory files in `.dreaming/memory/`, as Anthropic's "Dreaming with a dynamic workflow" cookbook does. See [skills/dream/README.md](skills/dream/README.md). |
 
 `/hstack:dream` also adds two agents (`transcript-analyzer` and `memory-organizer`), one workflow
