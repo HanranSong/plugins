@@ -1,6 +1,6 @@
 ---
 name: principles-verify-work
-description: Principles for checking work. Use when debugging, writing or changing tests, measuring performance or eval results, when fixes keep failing, or before saying work is done.
+description: Principles for checking work. Use when fixing a bug or a failing test, debugging, writing or changing tests, measuring performance or eval results, when fixes keep failing, or before saying work is done.
 user-invocable: false
 ---
 

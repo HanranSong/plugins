@@ -46,7 +46,7 @@ flowchart TD
   start --> q{"What happens?"}
   q -- "the work matches a router" --> router["Claude loads that principles-* router:<br/>a table from situation to principle file"]
   router --> pick["At each decision, Claude reads<br/>every file whose situation matches"]
-  q -- "Claude works with a .ts or .tsx file" --> ts["typescript-best-practices is offered,<br/>and it points to type-system-discipline"]
+  q -- "the task involves a .ts or .tsx file" --> ts["Claude loads typescript-best-practices,<br/>which points to type-system-discipline"]
   q -- "a command keeps failing after fixes" --> cue["premise_cue.py adds a note<br/>pointing to attack-the-premise"]
   q -- "you type /hstack:principle-*" --> manual["That principle loads"]
   pick --> file[("skills/principle-*/SKILL.md")]
@@ -63,13 +63,14 @@ front of it, and the table stays in the conversation for later decisions in the 
 | Router | Claude picks it for | Principles |
 | --- | --- | --- |
 | `principles-design-data` | types, data structures, signatures, validation, error handling, state, retries, shared state | foundational-thinking, model-the-domain, type-system-discipline, boundary-discipline, make-operations-idempotent, separate-before-serializing-shared-state |
-| `principles-design-features` | product, UX and scope tradeoffs, a design with no precedent in the codebase, a new requirement in an existing design | experience-first, exhaust-the-design-space, redesign-from-first-principles |
+| `principles-design-features` | how to support a requested feature, product, UX and scope tradeoffs, a design with no precedent in the codebase, a new requirement in an existing design | experience-first, exhaust-the-design-space, redesign-from-first-principles |
 | `principles-refactor-code` | refactoring, sizing a diff, code that is hard to trace, replacing an internal API | laziness-protocol, subtract-before-you-add, minimize-reader-load, migrate-callers-then-delete-legacy-apis |
-| `principles-verify-work` | debugging, tests, measuring, fixes that keep failing, before calling work done | fix-root-causes, attack-the-premise, test-behavior-not-implementation, explain-the-number (+ benchmark-checklist), prove-it-works |
+| `principles-verify-work` | fixing a bug or a failing test, debugging, tests, measuring, fixes that keep failing, before calling work done | fix-root-causes, attack-the-premise, test-behavior-not-implementation, explain-the-number (+ benchmark-checklist), prove-it-works |
 | `principles-plan-delivery` | phased rewrites and migrations, sweeps of similar edits, stacking commits and PRs, work a script could do, a repeated correction | outcome-oriented-execution, sequence-verifiable-units, build-the-lever, encode-lessons-in-structure |
 
-**TypeScript, by file.** `typescript-best-practices` becomes available once Claude works with a `.ts` or `.tsx`
-file, through its `paths` setting.
+**TypeScript, by file.** `typescript-best-practices` has a `paths` setting for `.ts` and `.tsx` files, but in
+testing with Claude Code 2.1.332 it was offered from the start of every session. Claude selected it for a task on a
+TypeScript file.
 
 **A hook, for failed fixes.** `hooks/premise_cue.py` watches shell commands and file edits. When the same command,
 in the same directory, has failed after two separate rounds of edits, it adds a note next to the failure pointing

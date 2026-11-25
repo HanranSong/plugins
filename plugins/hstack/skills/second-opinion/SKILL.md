@@ -31,9 +31,11 @@ Then collect what the reviewer needs to find the work on its own:
 - The absolute path of the repository.
 - For code: the exact git command that shows the change and the files that matter most. Use `git diff HEAD` for
   uncommitted work (plain `git diff` skips staged changes), `git diff <base>...HEAD` for a branch and
-  `git show <sha>` for a commit. For a branch, `<base>` is the branch it will merge into, which isn't always
-  `main`: check it rather than assume. Run the command yourself first to check it shows what you expect. No `git diff`
-  shows new files that git doesn't track yet, so name those by path.
+  `git show <sha>` for a commit. If a file was staged and then changed again, also give `git diff --cached`,
+  because `git diff HEAD` shows only the end result, not what a commit would take. For a branch, `<base>` is the
+  branch it will merge into, which isn't always `main`: check it rather than assume. Run the command yourself
+  first to check it shows what you expect. No `git diff` shows new files that git doesn't track yet, so name those
+  by path.
 - For a plan or design: the file it is in. If it exists only in this conversation, put it in the prompt itself,
   condensed.
 

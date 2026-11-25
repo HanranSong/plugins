@@ -36,7 +36,9 @@ table. "How should the dashboard stay fast when the API is slow?" leaves room fo
 wrapper?" rules out.
 
 If you can't tell what outcome the user needs, for example because this session hasn't said, ask in one short
-question before you judge. Don't guess it: the goal is the one thing a clean slate keeps.
+question before you judge. Don't guess it: the goal is the one thing a clean slate keeps. If the user says the
+goal is still open, ask which it is. Don't settle it yourself, even with an option that covers every reading, and
+don't list it under "Treated as fixed".
 
 If judging it needs facts about the code, read the code. Don't rely on what you remember of it.
 

@@ -71,7 +71,7 @@ Keep it to about 200 words, in the user's terms rather than yours. Use this shap
 
 Write each question as your pick and the alternative, never as a yes-or-no question. After "Should it include
 archived items?", a bare "yes" could mean "include them" or "go with your pick". After "Archived items: I'd leave
-them out, because … Or: include them", it can only mean the second.
+them out, because … Or: include them", it can only mean "go with your pick".
 
 If more than three filled-in pieces need to be questions, ask the three that would cost most to get wrong, and end
 the section with "Still to settle:" and the topics of the rest.

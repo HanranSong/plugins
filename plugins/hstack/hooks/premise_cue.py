@@ -122,7 +122,8 @@ def _note(command: str) -> str:
         f"hstack: `{shown}` has failed again after a second round of edits meant to fix it. If it is still the "
         "same failure and both fixes rested on the same assumption, don't write a third fix yet: Read "
         f"{PRINCIPLE} in full and follow it, writing the assumption down and testing it directly first. If the "
-        "failure has moved on, such as a different test or error, your fixes worked: carry on."
+        "failure has moved on, such as a different test or error, check that the original failure is fixed and "
+        "not just hidden behind the new one, then carry on."
     )
 
 
