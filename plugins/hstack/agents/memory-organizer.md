@@ -2,8 +2,8 @@
 name: memory-organizer
 description: The organizer agent of /hstack:dream. It tidies the project's .dreaming/memory/ directory once, after every analyzer has finished. Only /hstack:dream's workflow uses it, so never choose it for any other task.
 tools: Read, Write, Edit, Glob, Grep
-model: haiku
-effort: medium
+model: opus
+effort: xhigh
 omitClaudeMd: true
 ---
 

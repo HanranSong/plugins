@@ -2,7 +2,7 @@
 name: transcript-analyzer
 description: The analyzer agent of /hstack:dream. It reads one transcript that /hstack:dream prepared and adds its durable facts to the project's .dreaming/memory/ directory. Only /hstack:dream's workflow uses it, so never choose it for any other task.
 tools: Read, Write, Edit, Glob, Grep
-model: haiku
+model: opus
 effort: medium
 omitClaudeMd: true
 ---

@@ -3,7 +3,8 @@
 This baseline ports Anthropic's [Dreaming with a dynamic
 workflow](https://github.com/anthropics/claude-cookbooks/blob/main/managed_agents/CMA_dreaming_with_a_dynamic_workflow.ipynb)
 from Claude Managed Agents to a Claude Code plugin. It keeps the cookbook's prompts, method and defaults, and
-changes only what Managed Agents provides and Claude Code does not. This file lists every such change.
+changes only what Managed Agents provides and Claude Code does not, plus the agents' model and effort. This file
+lists every such change.
 
 - **Source:** `anthropics/claude-cookbooks`, `main` at `8ad5de647d4f` (2026-11-20). The notebook last changed
   in `d4bd2fb364a7` (2026-11-04).
@@ -19,7 +20,7 @@ changes only what Managed Agents provides and Claude Code does not. This file li
 | The notebook, run by hand, or `dreaming_nightly.py` from cron | `/hstack:dream`, run by hand in a session of its own (`SKILL.md`) |
 | Export finished sessions with the API (`export_session`), render them (`render_text`), upload them | `dream.py prepare` reads Claude Code's logs (`claude_logs.py`), renders them with the same `render_text`, and writes them to the run's folder |
 | `memory-distiller`, a Sonnet lead agent, writes a workflow from `work_request.md` and its `lead_system.md`, then starts it | A fixed workflow script, `workflows/dream-workflow.js`, started by the skill |
-| `transcript-analyzer` and `memory-organizer`, Haiku, five file tools | Plugin agents `hstack:transcript-analyzer` and `hstack:memory-organizer`, Haiku, the same five tools |
+| `transcript-analyzer` and `memory-organizer`, Haiku, five file tools | Plugin agents `hstack:transcript-analyzer` and `hstack:memory-organizer`, Opus, the same five tools |
 | One analyzer per transcript in groups of about 20, then the organizer once | The same, in the workflow script |
 | A memory store, mounted read-write in the dream session | `.dreaming/memory/` in the project |
 | A copy of the store's files in the run's records, and memory versions | `memory_before/` in the run's folder, for the latest 5 runs |
@@ -55,9 +56,21 @@ Each change replaces a Managed Agents phrase. Nothing else in either prompt chan
 ### What each agent file adds
 
 - `tools: Read, Write, Edit, Glob, Grep`: the cookbook's five tools.
-- `model: haiku`: the cookbook's `ANALYZER_MODEL` and `ORGANIZER_MODEL`, Claude Haiku 5.5.
-- `effort: medium`: the cookbook names no effort level, and Managed Agents ran its agents at its default.
-  Without this line, a plugin agent would take the session's effort level instead.
+- `model: opus`, where the cookbook's `ANALYZER_MODEL` and `ORGANIZER_MODEL` are Claude Haiku 5.5. A run here
+  uses the developer's Claude plan, not API billing, so it buys quality with usage. On Artificial Analysis
+  (2026-11), Haiku 5.5 trails Opus 5.5 at the same effort on the benchmarks nearest this job, AA-Briefcase
+  (agentic knowledge work), AutomationBench-AA and GDP.pdf (documents), and at max it still trails Opus 5.5 at
+  medium. Sonnet 5.5 at high effort ties Opus 5.5 at medium on those, takes the same time per Intelligence Index
+  task and writes more output tokens across the index.
+- `effort`: medium for the analyzer, xhigh for the organizer. The cookbook names no effort level, and Managed
+  Agents ran its agents at its default. Without this line, the agent's level would come from the session's
+  settings, and the session's `/effort` level does not apply to an agent on another model. The line overrides the
+  session's level but not `CLAUDE_CODE_EFFORT_LEVEL`, which, when set, decides both agents' level. The analyzer
+  runs once per transcript, so it stays at Opus 5.5's default. The organizer runs once, and its merges and
+  conflict calls decide what every later session reads, so it gets xhigh. Over high, Opus 5.5 at xhigh scores
+  77 Elo more on AA-Briefcase, the benchmark nearest the organizer's job, and 1.8 points more on
+  AutomationBench-AA, but 2.2 points less on GDP.pdf, for 1.7 times the time per Intelligence Index task and 1.8
+  times the output tokens across it. The organizer is one agent at the end of a run, so that cost is paid once.
 - `omitClaudeMd: true`: a Managed Agents agent sees only its own prompt. Without this line, a Claude Code
   subagent would also get the project's `CLAUDE.md`.
 - A `description` saying that only `/hstack:dream`'s workflow uses the agent, since Claude can pick a plugin's

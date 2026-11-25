@@ -30,8 +30,9 @@ The details of each step are below.
 
 ## Requirements
 
-- Claude Code with dynamic workflows. On Pro, turn them on from the Dynamic workflows row in `/config`. The
-  agents use `omitClaudeMd`, which needs Claude Code 2.1.271 or later.
+- Claude Code 2.1.280 or later, with dynamic workflows. On Pro, turn them on from the Dynamic workflows row in
+  `/config`. The agents' `model: opus` means Opus 5.5 from 2.1.280 on, and Opus 5 before it. Their
+  `omitClaudeMd` needs 2.1.271 or later.
 - `python3`, 3.10 or later. The scripts use only Python's standard library.
 
 ## Run it
@@ -54,12 +55,17 @@ Anything after the command is passed to every agent as the developer's preferenc
 - **A session still in use is taken as it stands.** Claude Code's logs do not say when a session has finished,
   and what a session does after a run has taken it is not looked at again.
 - **How it works.** One `transcript-analyzer` agent per session, in groups of about 20, each group finishing
-  before the next starts, then one `memory-organizer` agent. Both run on Haiku, at medium effort.
+  before the next starts, then one `memory-organizer` agent. Both run on Opus: the analyzers at medium effort,
+  the organizer at xhigh. `CLAUDE_CODE_EFFORT_LEVEL`, if you set it, overrides both.
 - **How many run at once.** A workflow runs at most 16 agents at once, and fewer on a machine with few CPUs:
   on 2 CPUs, possibly only one. The agents mostly wait on the model, so it is safe to raise this, with Claude
   Code 2.1.269 or later, in Claude Code's settings (for example `~/.claude/settings.json`, which the VS Code
   extension reads too): `"env": {"CLAUDE_CODE_WORKFLOW_MAX_CONCURRENT_AGENTS": "20"}`.
-- **It uses your plan's usage.** A run counts against your Claude plan's limits, like any other session.
+- **It uses your plan's usage.** A run counts against your Claude plan's limits, like any other session. A
+  large run on Opus can reach one, and more agents at once reach it sooner. In an interactive session on a
+  subscription, with `autoContinueAtUsageLimit` on and a reset within 24 hours, the run waits for the reset and
+  goes on by itself, up to twice. Otherwise the agents that hit the limit fail, the run is not complete, and the
+  next run analyzes all the same sessions again, even if only the organizer failed.
 
 ## What it writes
 
