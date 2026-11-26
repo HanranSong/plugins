@@ -1,0 +1,73 @@
+{
+  "sources": {
+    "pstack": {
+      "mode": "merge",
+      "repo": "https://github.com/cursor/plugins.git",
+      "branch": "main",
+      "base": "ca782ed8b3c2c521cead8e1720d55c3a5dbf2347",
+      "upstream_dir": "harness/pstack/claude-code/skills",
+      "local_dir": "plugins/hstack/skills",
+      "license": {
+        "upstream": "harness/pstack/claude-code/LICENSE",
+        "local": "plugins/hstack/LICENSE-pstack"
+      },
+      "skills": {
+        "benchmark-checklist": {
+          "edits": {
+            "SKILL.md": "Drops the \"Other perf material\" section, which points to pstack's Perf issue and Hillclimb playbooks. hstack doesn't ship them."
+          }
+        },
+        "principle-attack-the-premise": {},
+        "principle-boundary-discipline": {},
+        "principle-build-the-lever": {},
+        "principle-encode-lessons-in-structure": {},
+        "principle-exhaust-the-design-space": {},
+        "principle-experience-first": {},
+        "principle-explain-the-number": {},
+        "principle-fix-root-causes": {},
+        "principle-foundational-thinking": {},
+        "principle-guard-the-context-window": {},
+        "principle-laziness-protocol": {},
+        "principle-make-operations-idempotent": {},
+        "principle-migrate-callers-then-delete-legacy-apis": {},
+        "principle-minimize-reader-load": {},
+        "principle-model-the-domain": {},
+        "principle-never-block-on-the-human": {},
+        "principle-outcome-oriented-execution": {},
+        "principle-prove-it-works": {},
+        "principle-redesign-from-first-principles": {},
+        "principle-separate-before-serializing-shared-state": {},
+        "principle-sequence-verifiable-units": {},
+        "principle-subtract-before-you-add": {},
+        "principle-test-behavior-not-implementation": {},
+        "principle-type-system-discipline": {
+          "edits": {
+            "SKILL.md": "Drops the line telling Claude Code to read pstack's Claude Code adapter (docs/harness/claude-code.md). hstack doesn't ship it."
+          }
+        },
+        "typescript-best-practices": {
+          "edits": {
+            "SKILL.md": "Names the two principles it points to (type-system-discipline, boundary-discipline) by their file paths under ${CLAUDE_PLUGIN_ROOT}, so they resolve inside hstack. Drops disable-model-invocation, so its paths setting offers it once Claude works with .ts or .tsx files."
+          }
+        }
+      }
+    },
+    "claude-cookbooks": {
+      "mode": "report",
+      "repo": "https://github.com/anthropics/claude-cookbooks.git",
+      "branch": "main",
+      "base": "8ad5de647d4f0f50c95d74aabc8aa20a3f70cdd3",
+      "notes": "plugins/hstack/skills/dream/MIGRATION.md",
+      "paths": [
+        "managed_agents/CMA_dreaming_with_a_dynamic_workflow.ipynb",
+        "managed_agents/dreaming_nightly.py",
+        "managed_agents/memory_distill_utils.py",
+        "managed_agents/example_data/memory_distill/prompts"
+      ],
+      "license": {
+        "upstream": "LICENSE",
+        "local": "plugins/hstack/skills/dream/scripts/LICENSE-claude-cookbooks"
+      }
+    }
+  }
+}
