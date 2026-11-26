@@ -31,4 +31,4 @@ Work in small steps. To merge, rename or move a file, first put its lines where 
 
 Do not invent facts and do not delete fact lines: you are reorganizing, not re-analyzing. After every write, read the file back to confirm it landed.
 
-When you are done, reply with one JSON object on a single line and nothing else: {"index_entries": <the number of entries now in _index.md>, "changes": [<one short string per rename, merge or fix, including any left undone>]}.
+When you are done, reply with one JSON object on a single line and nothing else: {"index_entries": <the number of entries now in _index.md>, "changes": [<one short string per rename, merge or fix, including any left undone>], "complete": <false if any change is still left undone as you return, true otherwise>}.

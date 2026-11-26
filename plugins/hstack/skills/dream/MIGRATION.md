@@ -27,13 +27,13 @@ lists every such change.
 | Sandbox with no network, every tool call checked by the `auto` policy | The agents' five tools, plus a hook that keeps them inside the transcripts and memory (`hooks/dream_guard.py`) |
 | `INSTRUCTIONS` → `{run_preferences}` in each agent's system prompt | Text after `/hstack:dream` → the same paragraph, at the end of each agent's task message |
 | Check that every transcript was analyzed and the organizer finished; delete the `MOVED TO` placeholders | `dream.py finish` |
-| The next night takes sessions created since the last run started; a failed night keeps its window | The same, kept in `.dreaming/state/state.json`. The first run takes the last 14 days, the notebook's default, and that start is saved at once, so a failed first run keeps it too |
+| The next night takes sessions created since the last run started; a failed night keeps its window | The same window, kept in `.dreaming/state/state.json`, but over messages rather than sessions, so a continued session's new part is taken (see below). The first run takes the last 14 days, the notebook's default, and that start is saved at once, so a failed first run keeps it too |
 | Records in a folder only you can read (`0700`, files `0600`) | The run state the same way: `.dreaming/state/` and each run's folder `0700`, transcripts `0600` |
 | Mount the store read-only in the agent's sessions | Import `_index.md` from the project's `CLAUDE.md` (see the README) |
 
 ## The prompts
 
-Each change replaces a Managed Agents phrase. Nothing else in either prompt changed.
+Each change replaces a Managed Agents phrase, except the return lines, which also ask whether the work was finished. Nothing else in either prompt changed.
 
 ### `analyzer_system.md` → `agents/transcript-analyzer.md`
 
@@ -43,6 +43,7 @@ Each change replaces a Managed Agents phrase. Nothing else in either prompt chan
 | "a plain-text export of a Claude Managed Agents session;" | "a plain-text export of a Claude Code session;" | The sessions are Claude Code's, rendered in the same format. |
 | "Your task message names the one transcript file you are assigned to, by its path under /mnt/session/uploads/. The shared memory directory you read and write is mounted at {mem_dir}." | "Your task message names the one transcript file you are assigned to, by its path, and the shared memory directory you read and write." | A plugin agent's system prompt is fixed, and the memory directory differs per project, so the task message names it. The cookbook's example task already does. |
 | "{run_preferences}For your assigned transcript:" | "For your assigned transcript:" | Same reason: the preferences paragraph moved to the end of the task message. |
+| "return an object with one field, `summary`: …" | "return an object with two fields: `summary`, …; and `analyzed`, false if any of your work is still undone as you return …" | The cookbook's lead judged a run from the summaries alone. Here an analyzer that could not finish says so, and the run is not complete (see "The lead agent's work"). |
 
 ### `organizer_system.md` → `agents/memory-organizer.md`
 
@@ -52,6 +53,7 @@ Each change replaces a Managed Agents phrase. Nothing else in either prompt chan
 | "write the file at its new path inside {mem_dir})" | "write the file at its new path inside that directory)" | As for the analyzer. |
 | "The platform checks each write or edit before it runs;" | "Each write or edit is checked before it runs;" | The hook checks it, not the platform. |
 | "{run_preferences}When you are done," | "When you are done," | The preferences paragraph moved to the task message. |
+| `{"index_entries": …, "changes": […]}` | the same, plus `"complete": <false if any change is still left undone as you return …>` | As for the analyzer: an organizer that could not finish says so, and `finish` then deletes no placeholder. |
 
 ### What each agent file adds
 
@@ -81,7 +83,11 @@ Each change replaces a Managed Agents phrase. Nothing else in either prompt chan
 The cookbook's lead agent worded each agent's task itself, so the cookbook has no fixed task text. The workflow
 uses these:
 
-- **Analyzer:** the task the notebook shows its lead agent wrote, word for word, with this run's paths.
+- **Analyzer:** the task the notebook shows its lead agent wrote, word for word, with this run's paths, plus
+  one sentence: "Take facts only from the transcript; the git status Claude Code gave you describes the project
+  now, not the session." Claude Code gives a subagent the project's current git status (branch, recent commits,
+  git user), which a Managed Agents agent never saw. In a test run an analyzer wrote the branch at dream time
+  into memory as if the session it read had said it.
 - **Organizer:** "Every analyzer has finished. Tidy the whole memory directory at `<memory>`." The cookbook shows
   no example of this one, so it was written for this port.
 - **Preferences:** the paragraphs of the cookbook's `analyzer_preferences` and `organizer_preferences`, word for
@@ -94,7 +100,12 @@ The workflow script replaces the lead agent, so `lead_system.md` and `work_reque
 does what the work request asks: one analyzer per transcript, in groups of about 20, each group finishing before
 the next starts, then the organizer once. A failed agent is recorded with its reason and does not stop the run.
 It returns the fields of the lead agent's one-line report: `inputs_expected`, `inputs_processed`, `failures`,
-`organized`, `index_entries` and `changes`.
+`organized`, `index_entries` and `changes`. Besides its `summary`, an analyzer returns `analyzed`, false when any
+of its work is still undone as it returns (part of the transcript unread, or a change it could not make); the
+script counts that as a failure, so the run is not complete and the next run takes the session again. The
+organizer likewise returns `complete`, false when a change is still left undone; the run is then not organized,
+so `finish` deletes no placeholder and the run is not complete. A refusal the agent worked around does not count.
+The cookbook's lead had only the agents' replies to go on.
 
 `dream.py finish` reads that report from the file Claude Code saves for each workflow run
 (`workflows/wf_<id>.json` in the dream session's folder, under `result.report`), so no model copies it. That
@@ -121,16 +132,19 @@ logs, and nothing more:
 
 These rules exist because Claude Code's logs differ from a Managed Agents export:
 
+- **A message typed while Claude works is the user's.** Claude Code logs it, once delivered, as an attachment of
+  type `queued_command` with a human origin, and it is read as the user message it is. The same attachment with
+  another origin, such as an agent's hand-back, is not the user's.
 - **Text Claude Code put in the user's turn is left out:** skill bodies (`isMeta`), compaction summaries
-  (`isCompactSummary`), and notices it sends itself, such as a background agent finishing (a user message whose
-  `origin` is not `human`). The user did not write them. A log that Claude Code trimmed therefore loses what
+  (`isCompactSummary`), notices it sends itself, such as a background agent finishing (a user message whose
+  `origin` is not `human`), and what it prints for a slash command (`<local-command-stdout>` and the like). The user did not write them. A log that Claude Code trimmed therefore loses what
   only its summary held.
 - **Images and documents that are not text are dropped.** Rendered as text, they would be base64.
 - **A tool output saved to a file is read back.** Claude Code moves large outputs out of the log, and a
   Managed Agents export holds them whole. Both of Claude Code's previews are read ("Full output saved to" and
-  "only the first … were saved to"), from the file they name if it is in a `tool-results` folder of Claude
-  Code's own logs (a fork's previews name its parent session's), and never from anywhere else, since a tool's
-  output could imitate a preview. When the file is gone or was never written, the transcript keeps the
+  "only the first … were saved to"), from the file they name if it is in a `tool-results` folder inside the
+  session's own folder, and never from anywhere else, since a tool's output could imitate a preview naming
+  another session's or another project's file. When the file is gone or was never written, the transcript keeps the
   preview; when only part was saved, it holds that part. Either way a `NOTE ABOUT THIS FILE` line, which the
   analyzer's prompt already describes, says so, and the run's report notes it.
 - **Which sessions are the project's.** The cookbook picks one agent's sessions by its id. Here they are:
@@ -141,9 +155,35 @@ These rules exist because Claude Code's logs differ from a Managed Agents export
     `client/a`);
   - one per session id, the newest where two log folders hold the same session;
   - each a session's own log, whose records carry the id it is named after.
-- **When a session started** is its first message's time. A forked session's copied messages are marked
-  `forkedFrom` and keep their old times, so a fork starts at its first message that is not a copy. A fork with
-  none yet has nothing of its own to dream over and is not taken until it has.
+- **A fork holds only its own messages.** A forked session opens with copies of the messages it was forked
+  from, which keep their old times. A fork made from the command line names its parent in a `derived-from` record
+  (`via: "fork"`; a compacted session gets one too, with `via: "compact"`), and each copy keeps its original's
+  `uuid`. One made in VS Code gives each copy a new `uuid` and names its original in `forkedFrom`. Either way, a
+  copy whose original the parent's log still holds is left out of the fork's transcript, since it is analyzed
+  with the parent. A copy whose parent's log is gone is kept, since nothing else holds it; its old time leaves it
+  out of any run whose window began after it.
+- **What was rewound away is left out.** The terminal's rewind keeps the abandoned branch in the session's log:
+  the message sent after the rewind hangs from the same record (`parentUuid`) as the first message of that
+  branch. The conversation as it now stands is the chain of records from the last message back to the start,
+  following a compaction's boundary to the record before it (`logicalParentUuid`). Wherever a turn's start on
+  that chain (a user record that is not a tool result: a message, a typed command, or the note Claude Code logs
+  before one; or the boundary a `/compact` leaves) has a sibling that is also a turn's start, the sibling and everything after it were rewound away
+  and are left out, with the agents and workflows launched there (named by a subagent's `toolUseId`, or a
+  workflow's `runId`). Other branches, such as the results of parallel tool calls, hang beside a reply or a tool
+  result, and are kept, as is everything in a log whose records carry no links. Across the 35 logs this was
+  checked on, two turn starts share a parent only where a rewind happened.
+- **A run takes messages, not sessions.** The cookbook's nightly script takes the sessions created since the last
+  run started, and a Managed Agents session it took is finished. A Claude Code session can be continued at any
+  time, so each run takes what was said from the window's start up to its own start: new sessions, and the new
+  part of sessions continued after an earlier run took them, whose transcript's `NOTE ABOUT THIS FILE` says the
+  session began earlier. What a session says while a run runs is the next run's. A record counts as written no
+  earlier than the messages above it in the log, since some carry the time a message was typed rather than
+  written: a message typed while Claude worked is logged only once delivered. Only messages count, so a fork's
+  copied messages, written after its bookkeeping, keep their own older times. A session whose part in the
+  window is only typed commands with nothing after them, such as the `/clear` that opens the session `/clear`
+  starts, has no conversation and is left out.
+- **When a session started**, shown in its transcript, is its first message's time, for a fork its first message
+  that is not a copy.
 
 ## Added for Claude Code
 
@@ -153,8 +193,9 @@ The cookbook did not need these, because Managed Agents provided them:
   agents. In Claude Code every session in the folder looks alike, so `prepare` leaves out:
   - the session it runs in, which it records in `state.json`;
   - every session recorded there before;
-  - any session where `/hstack:dream` came before any reply, known by the whole message Claude Code logs for a
-    typed command (its `command-message` and `command-name`), not by text that quotes it. That includes a
+  - any session where `/hstack:dream` came before anything else was said in it, a reply or a message of the
+    user's (one sent and interrupted gets no reply), known by the whole message Claude Code logs for a typed
+    command (its `command-message` and `command-name`), not by text that quotes it. That includes a
     session forked from a dream session, which starts with the dream's copied command;
   - any log whose records carry one of those sessions' ids, all of them known before any log is taken;
   - the logs of the dream's own agents, in any session.
@@ -162,7 +203,9 @@ The cookbook did not need these, because Managed Agents provided them:
   It refuses to run in a session that already has a conversation, since that conversation would then never be
   analyzed.
 - **Each run is closed.** `prepare` records the run the agents may read (`current_run`), `finish` closes it,
-  and the next `prepare` closes any run that never finished.
+  and the next `prepare` closes any run that never finished. Runs are meant to run one at a time. Each run takes
+  what was said from the window's start up to its own start, kept to the millisecond as Claude Code times
+  messages, and its start is the next window's start, so every message belongs to exactly one window.
 - **Only the organizer's placeholders are deleted.** The cookbook deletes the placeholders its session wrote
   during the organizer's run, and its delete carries the content's hash. Here `finish` deletes only placeholders
   the hook logged the organizer writing during this run, moving each aside first and deleting it only if it is

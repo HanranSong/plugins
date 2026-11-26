@@ -49,11 +49,20 @@ Anything after the command is passed to every agent as the developer's preferenc
 - **It runs in a session of its own.** A session that runs `/hstack:dream` is never analyzed, and neither is
   anything else you do in it, nor a session forked from it, so it refuses to start in a session that already
   has a conversation.
-- **Which sessions it takes.** Those created since the last complete run started; on the first run, those of the
-  last 14 days. A run that is not complete keeps its window, so the next run takes the same sessions again. A
-  forked session counts from its first message of its own.
-- **A session still in use is taken as it stands.** Claude Code's logs do not say when a session has finished,
-  and what a session does after a run has taken it is not looked at again.
+- **What it takes.** What was said in the project's sessions since the last complete run started; on the first
+  run, in the last 14 days. That means new sessions, and the new part of a session you continued after a run
+  took it: the analyzer sees only that part, with a note that the session began earlier. A run that is not
+  complete keeps its window, so the next run takes the same messages again. A forked session's own messages
+  are analyzed, not the ones it copied, which belong to the session it was forked from.
+- **Rewinds.** What you rewound away inside a session, as the terminal's rewind (Esc Esc) does, is left out:
+  only the conversation as it now stands is analyzed. In VS Code, going back to an earlier message forks the
+  conversation and keeps the original as its own session, so what the original holds is still analyzed with it.
+  A rewind does not take back what a run already analyzed: if a run took a decision before you rewound past it,
+  memory keeps it. To take it back, say so in a session ("we're not removing the inlet station after all").
+- **One run at a time.** Start `/hstack:dream` again only after the last run has finished: a new run closes the
+  last one's transcripts to its agents.
+- **A session still in use is taken as it stands.** Claude Code's logs do not say when a session has finished.
+  What it says after the run started belongs to the next run.
 - **How it works.** One `transcript-analyzer` agent per session, in groups of about 20, each group finishing
   before the next starts, then one `memory-organizer` agent. Both run on Opus: the analyzers at medium effort,
   the organizer at xhigh. `CLAUDE_CODE_EFFORT_LEVEL`, if you set it, overrides both.

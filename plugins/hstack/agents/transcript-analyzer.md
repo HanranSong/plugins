@@ -71,7 +71,7 @@ Your scope is every memory file in the memory directory that relates to this tra
   Grouped under ## <domain> headings so the agent can scan for the right cluster. After your edits, add/update entries for every file you touched or created. Create _index.md if it doesn't exist.
 - Prune low-value content: drop first-person narration ("I noticed...", "Let me check...") and dead-end hypotheses. Keep facts, commands, values, causal mechanisms, and the process observations you added. Keep each memory file under 100KB.
 
-When done, return an object with one field, `summary`: one paragraph on what this transcript was about and what you changed in the memory directory. Do not send a separate summary message.
+When done, return an object with two fields: `summary`, one paragraph on what this transcript was about and what you changed in the memory directory; and `analyzed`, false if any of your work is still undone as you return (a part of the transcript you could not read, or a change you could not make, say which in the summary), true otherwise. Do not send a separate summary message.
 
 ### Work in as few turns as you can
 Every turn you take sends your whole context to the model again, the transcript you have read included, and resending it is most of what this run costs. Do the same work in fewer, larger turns:

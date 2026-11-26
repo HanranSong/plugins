@@ -91,7 +91,7 @@ def _log(project: Path, data: dict, decision: tuple[str, str]) -> None:
     log = project / ".dreaming" / "state" / "guard.log"
     given = data.get("tool_input") if isinstance(data.get("tool_input"), dict) else {}
     entry = {
-        "time": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "time": datetime.now(timezone.utc).isoformat(timespec="milliseconds"),  # as precise as a run's start
         "agent_type": data.get("agent_type"),
         "agent_id": data.get("agent_id"),
         "tool": data.get("tool_name"),
@@ -120,7 +120,10 @@ def main() -> int:
         decision = decide(data, project)
     except Exception as error:  # a check that breaks refuses the call: a crashed hook would let it through
         decision = ("deny", f"The guard could not check this call ({type(error).__name__}: {error}).")
-    _log(project, data, decision)
+    try:
+        _log(project, data, decision)
+    except Exception:  # a log that cannot be written must never keep the decision from being given
+        pass
     print(
         json.dumps(
             {

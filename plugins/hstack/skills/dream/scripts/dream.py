@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """The steps around /hstack:dream's workflow. Each prints one JSON object.
 
-prepare  Takes this project's Claude Code sessions created since the last complete run (the last 14 days on
-         the first run), leaves out dream sessions, writes one transcript file per session, copies memory,
-         and prints the workflow's args.
+prepare  Takes what was said in this project's Claude Code sessions since the last complete run started (the
+         last 14 days on the first run): new sessions, and the new part of continued ones. It leaves out dream
+         sessions, writes one transcript file per session, copies memory, and prints the workflow's args.
 finish   Reads the workflow's report from what Claude Code saved of the workflow run (or, failing that, from
          --report), deletes the organizer's "MOVED TO" placeholder files, writes the run's report, and moves
          the window on only if every transcript was analyzed and the organizer finished. A run that is not
@@ -52,7 +52,9 @@ class Paths:
 
 
 def _iso(moment: datetime) -> str:
-    return moment.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    """A UTC ISO timestamp to the millisecond, as Claude Code times messages: a window cut to the second would
+    take again a session that started in the same second as the run before it."""
+    return moment.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 def _parse_time(text) -> datetime | None:
@@ -147,9 +149,9 @@ def _current_session(project: Path, logs: list[Path], given: str | None, started
 def prepare(project: Path, session: str | None = None, dry_run: bool = False, started: datetime | None = None) -> dict:
     paths = Paths(project)
     started = started or datetime.now(timezone.utc)
+    started = started.replace(microsecond=started.microsecond // 1000 * 1000)  # as precisely as it is saved
     if not dry_run and (linked := _linked_folder(paths)):
         return linked
-    state = _load_state(paths)
     logs = claude_logs.session_logs(project)
     if not logs and not dry_run:
         return {
@@ -168,15 +170,28 @@ def prepare(project: Path, session: str | None = None, dry_run: bool = False, st
                 "running /hstack:dream here would keep what you did in it out of memory for good. Run /clear, "
                 "then /hstack:dream, or start a new Claude Code session for it.",
             }
-        if current not in state["dream_sessions"]:
-            state["dream_sessions"].append(current)
+    if dry_run:
+        return _take(project, paths, _load_state(paths), logs, None, started, dry_run=True)
+
+    state = _load_state(paths)
+    if current and current not in state["dream_sessions"]:
+        state["dream_sessions"].append(current)
+    _set_up(paths)
+    return _take(project, paths, state, logs, current, started, dry_run=False)
+
+
+def _take(project: Path, paths: Paths, state: dict, logs: list[Path], current: str | None, started: datetime, *,
+          dry_run: bool) -> dict:
+    """What was said in the project's sessions from the window's start up to this run's start, one transcript
+    per session: new sessions, and the new part of sessions that were continued. The run's start is the next
+    window's start, so each message belongs to exactly one window, and a message written at that moment, or
+    while this run runs, is the next run's."""
     since = _parse_time(state["last_run"]) or started - FIRST_WINDOW
     if not dry_run:
         # The first window's start is kept from the first run on, as the cookbook's nightly script keeps a failed
         # night's: a run that fails must not let the 14 days slide past the oldest sessions.
         state["last_run"] = state["last_run"] or _iso(since)
         state["current_run"] = None  # a run abandoned before its finish is closed to the agents now
-        _set_up(paths)
         _save_state(paths, state)  # the dream session is recorded first, so even a run that dies here skips it
 
     # First, which logs in the window are the project's, and which of those are dreams, known by content. Every
@@ -184,8 +199,9 @@ def prepare(project: Path, session: str | None = None, dry_run: bool = False, st
     dream = set(state["dream_sessions"])
     candidates, skipped = [], []
     for log in logs:
-        if log.stat().st_mtime < since.timestamp():
-            continue  # unchanged since the window began, so it was created before it: not read at all
+        written = [log.stat().st_mtime, *(p.stat().st_mtime for p in log.with_suffix("").rglob("agent-*.jsonl"))]
+        if max(written) < since.timestamp():
+            continue  # neither it nor its subagents' logs changed since the window began: not read at all
         records = claude_logs.read_records(log)
         if not claude_logs.belongs_to(records, project):
             continue  # another folder whose name maps to the same log folder
@@ -204,10 +220,9 @@ def prepare(project: Path, session: str | None = None, dry_run: bool = False, st
             skipped.append({"id": log.stem, "reason": "a /hstack:dream session"})
             continue
         records = claude_logs.read_records(log)
-        created = _parse_time(claude_logs.created_at(records))
-        if created is None or created < since:
-            continue  # before the window: an earlier run took it
-        exported = claude_logs.export(log, records)
+        exported = claude_logs.export(log, records, window=(since, started))
+        if not any(thread["events"] for thread in exported["threads"]):
+            continue  # nothing said in the window: an earlier run took it all, or it is the next run's
         if not claude_logs.has_conversation(exported):
             skipped.append({"id": log.stem, "reason": "no conversation"})
             continue
@@ -227,7 +242,7 @@ def prepare(project: Path, session: str | None = None, dry_run: bool = False, st
     if dry_run:
         return {
             "status": "dry run",
-            "message": f"{len(sessions)} session(s) created since {_iso(since)} would be analyzed. Nothing was "
+            "message": f"{len(sessions)} session(s) with messages since {_iso(since)} would be analyzed. Nothing was "
             "written.",
             "sessions": sessions,
             "skipped": skipped,
@@ -239,7 +254,7 @@ def prepare(project: Path, session: str | None = None, dry_run: bool = False, st
         _save_state(paths, state)
         return {
             "status": "nothing",
-            "message": f"No session created since {_iso(since)} is left to dream over.",
+            "message": f"No session has messages since {_iso(since)} left to dream over.",
             "skipped": skipped,
         }
 
@@ -263,7 +278,7 @@ def prepare(project: Path, session: str | None = None, dry_run: bool = False, st
     return {
         "status": "ready",
         "run_id": run_dir.name,
-        "message": f"{len(inputs)} session(s) created since {_iso(since)} to dream over.",
+        "message": f"{len(inputs)} session(s) with messages since {_iso(since)} to dream over.",
         "sessions": sessions,
         "skipped": skipped,
         "workflow_args": {"memory_dir": str(paths.memory), "transcripts": inputs, "group_size": GROUP_SIZE},
@@ -496,12 +511,12 @@ def finish(
     if complete:
         message = (
             f"Dreamed over {len(inputs)} session(s). Memory is in {paths.memory}; _index.md lists "
-            f"{entries if entries is not None else 'no'} file(s). The next run takes sessions created since "
+            f"{entries if entries is not None else 'no'} file(s). The next run takes what was said since "
             f"{run['started']}."
         )
     else:
         message = (
-            f"The run is not complete, so the next run takes the same sessions again (created since "
+            f"The run is not complete, so the next run takes the same messages again (said since "
             f"{run['since']}). Memory as it was before this run is in {run_dir / 'memory_before'}."
         )
     return {
@@ -520,7 +535,7 @@ def _write_report(run_dir: Path, run: dict, report: dict | None, failures: list)
         "",
         f"- Project: {run['project']}",
         f"- Started: {run['started']}; finished: {run['finished']}",
-        f"- Sessions created since {run['since']}: {len(run['inputs'])} analyzed",
+        f"- Sessions with messages since {run['since']}: {len(run['inputs'])} analyzed",
         f"- Result: {'complete' if run['complete'] else 'not complete: the next run takes the same sessions again'}",
         f"- _index.md lists {run['index_entries'] if run['index_entries'] is not None else 'no'} file(s)",
         f"- Placeholder files deleted: {len(run['stubs_removed'])}",

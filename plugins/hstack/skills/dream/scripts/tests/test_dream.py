@@ -88,6 +88,7 @@ class Sandbox(unittest.TestCase):
         return sid
 
 
+
 class ConverterTest(Sandbox):
     def test_keeps_the_conversation_and_leaves_out_the_rest(self):
         sid = new_id()
@@ -194,7 +195,7 @@ class PrepareTest(Sandbox):
         self.assertNotIn(old, skipped)
         state = json.loads((self.project / ".dreaming" / "state" / "state.json").read_text())
         self.assertEqual(set(state["dream_sessions"]), {current, earlier_dream})
-        self.assertEqual(state["last_run"], "2026-11-10T12:00:00Z")  # the first window, kept until a complete finish
+        self.assertEqual(state["last_run"], "2026-11-10T12:00:00.000Z")  # the first window, kept until a complete finish
         self.assertEqual(state["current_run"], result["run_id"])
         run_dir = self.project / ".dreaming" / "state" / "runs" / result["run_id"]
         self.assertEqual((run_dir / "memory_before" / "notes.md").read_text(), "earlier memory")
@@ -232,7 +233,7 @@ class PrepareTest(Sandbox):
         result = dream.prepare(self.project, current, started=NOW)
         self.assertEqual(result["status"], "nothing")
         state = json.loads((self.project / ".dreaming" / "state" / "state.json").read_text())
-        self.assertEqual(state["last_run"], "2026-11-24T12:00:00Z")
+        self.assertEqual(state["last_run"], "2026-11-24T12:00:00.000Z")
 
     def test_a_dry_run_writes_nothing(self):
         self.normal_session(hours=1)
@@ -291,7 +292,7 @@ class FinishTest(Sandbox):
         self.assertTrue((memory / "kept-stub.md").exists())
         self.assertTrue((memory / "user-stub.md").exists())  # not the organizer's: not this run's to delete
         state = json.loads((self.project / ".dreaming" / "state" / "state.json").read_text())
-        self.assertEqual(state["last_run"], "2026-11-24T12:00:00Z")
+        self.assertEqual(state["last_run"], "2026-11-24T12:00:00.000Z")
         report = Path(done["report"]).read_text()
         self.assertIn("merged old-name into topic", report)
 
@@ -305,7 +306,7 @@ class FinishTest(Sandbox):
         self.assertEqual(done["status"], "incomplete")
         self.assertTrue(any("not analyzed" in p for p in done["problems"]))
         state = json.loads((self.project / ".dreaming" / "state" / "state.json").read_text())
-        self.assertEqual(state["last_run"], "2026-11-10T12:00:00Z")  # the first window is kept
+        self.assertEqual(state["last_run"], "2026-11-10T12:00:00.000Z")  # the first window is kept
 
     def test_a_placeholder_whose_target_is_missing_is_left_and_reported(self):
         result, memory = self.prepared()
@@ -330,7 +331,7 @@ class FinishTest(Sandbox):
         done = dream.finish(self.project, result["run_id"])
         self.assertEqual(done["status"], "report needed")
         state = json.loads((self.project / ".dreaming" / "state" / "state.json").read_text())
-        self.assertEqual(state["last_run"], "2026-11-10T12:00:00Z")  # unchanged
+        self.assertEqual(state["last_run"], "2026-11-10T12:00:00.000Z")  # unchanged
 
     def test_the_saved_result_is_read_without_a_report_passed_in(self):
         result, _ = self.prepared()
@@ -501,7 +502,6 @@ class ReviewFixesTest(Sandbox):
             assistant(sid, [{"type": "text", "text": "Old answer"}], old, forkedFrom=source),
             user(sid, "New work after the fork", new),
         ])
-        self.assertEqual(claude_logs.created_at(claude_logs.read_records(self.logs / f"{sid}.jsonl")), new)
         result = dream.prepare(self.project, None, dry_run=True, started=NOW)
         self.assertEqual([s["id"] for s in result["sessions"]], [sid])
 
@@ -663,7 +663,11 @@ class SecondReviewTest(Sandbox):
         }))
         self.write_log(sid, [*copies, user(sid, "New work", at(hours=1)), user(sid, "More", at(minutes=-30))])
         later = dream.prepare(self.project, self.dream_session(minutes=-40), started=NOW + timedelta(hours=1))
-        self.assertNotIn(sid, [s["id"] for s in later.get("sessions", [])])
+        self.assertEqual([s["id"] for s in later["sessions"]], [sid])  # only its part said since the first run
+        text = Path(later["workflow_args"]["transcripts"][0]).read_text()
+        self.assertIn("More", text)
+        self.assertNotIn("New work", text)
+        self.assertNotIn("Old question", text)
 
     def test_folder_names_follow_claude_codes_rules(self):
         project = self.tmp / "rocket\U0001F680"
@@ -704,15 +708,25 @@ class SecondReviewTest(Sandbox):
         ])
         return render_text(claude_logs.export(self.logs / f"{sid}.jsonl"))
 
-    def test_saved_outputs_are_read_wherever_claude_code_saved_them(self):
-        parent = self.logs / new_id() / "tool-results"
-        parent.mkdir(parents=True)
-        (parent / "out.txt").write_text("PARENT'S SAVED OUTPUT")
-        forked = self.write_tool_result(new_id(), (
+    def test_saved_outputs_are_read_from_the_sessions_own_folder_only(self):
+        sid = new_id()
+        (self.logs / sid / "tool-results").mkdir(parents=True)
+        (self.logs / sid / "tool-results" / "out.txt").write_text("ITS OWN SAVED OUTPUT")
+        own = self.write_tool_result(sid, (
             "<persisted-output>\nOutput too large (40KB). Full output saved to: "
-            f"{parent}/out.txt\n\nPreview (first 2KB):\nPREVIEW\n</persisted-output>"))
-        self.assertIn("PARENT'S SAVED OUTPUT", forked)
-        self.assertNotIn("NOTE ABOUT THIS FILE", forked)
+            f"{self.logs / sid}/tool-results/out.txt\n\nPreview (first 2KB):\nPREVIEW\n</persisted-output>"))
+        self.assertIn("ITS OWN SAVED OUTPUT", own)
+        self.assertNotIn("NOTE ABOUT THIS FILE", own)
+
+        # Another project's saved output, named by a preview a tool printed (a session reading another's log).
+        elsewhere = claude_logs.claude_home() / "projects" / "-other-project" / new_id() / "tool-results"
+        elsewhere.mkdir(parents=True)
+        (elsewhere / "out.txt").write_text("ANOTHER PROJECT'S OUTPUT")
+        quoted = self.write_tool_result(new_id(), (
+            "<persisted-output>\nOutput too large (40KB). Full output saved to: "
+            f"{elsewhere}/out.txt\n\nPreview (first 2KB):\nPREVIEW\n</persisted-output>"))
+        self.assertNotIn("ANOTHER PROJECT'S OUTPUT", quoted)
+        self.assertIn("NOTE ABOUT THIS FILE", quoted)
 
         sid = new_id()
         (self.logs / sid / "tool-results").mkdir(parents=True)
@@ -731,6 +745,452 @@ class SecondReviewTest(Sandbox):
             f"<persisted-output>\nOutput too large (1KB). Full output saved to: {secret}\n\nPREVIEW\n</persisted-output>"))
         self.assertNotIn("PRIVATE KEY", text)
         self.assertIn("NOTE ABOUT THIS FILE", text)
+
+
+class HandsOnRunTest(Sandbox):
+    """What a hands-on run with Claude Code 2.1.332, and its review, turned up."""
+
+    def parent(self, **ago):
+        sid, when = new_id(), at(**ago)
+        records = [
+            user(sid, "PARENT FACT", when, uuid=new_id()),
+            assistant(sid, [{"type": "text", "text": "Noted."}], when, uuid=new_id()),
+        ]
+        self.write_log(sid, records)
+        return sid, records
+
+    def fork(self, parent, records, text, when):
+        """A fork as Claude Code 2.1.332 logs it: a derived-from record, then copies of the parent's messages
+        that keep their uuids and times (a copied reply marked as made for the parent), then its own."""
+        sid = new_id()
+        copies = [
+            {**r, "sessionId": sid, **({"requestSessionId": parent} if r["type"] == "assistant" else {})}
+            for r in records
+        ]
+        derived = {"type": "derived-from", "v": 1, "sessionId": sid,
+                   "sessions": [{"type": "claude_code_session", "id": parent, "via": "fork"}]}
+        self.write_log(sid, [derived, *copies, user(sid, text, when, uuid=new_id())])
+        return sid
+
+    def transcript(self, sid):
+        return render_text(claude_logs.export(self.logs / f"{sid}.jsonl"))
+
+    def complete(self, prepared):
+        taken = len(prepared["sessions"])
+        return dream.finish(self.project, prepared["run_id"], json.dumps({
+            "inputs_expected": taken, "inputs_processed": taken, "failures": [], "organized": True,
+            "index_entries": 0, "changes": [],
+        }))
+
+    def state(self):
+        return json.loads((self.project / ".dreaming" / "state" / "state.json").read_text())
+
+    def test_a_fork_holds_and_starts_with_its_own_messages_only(self):
+        parent, records = self.parent(days=3)
+        fork = self.fork(parent, records, "FORK FACT", at(hours=1))
+        text = self.transcript(fork)
+        self.assertIn("FORK FACT", text)
+        self.assertNotIn("PARENT FACT", text)
+        self.assertNotIn("NOTE ABOUT THIS FILE", text)
+        result = dream.prepare(self.project, None, dry_run=True, started=NOW)
+        self.assertIn((fork, at(hours=1)), [(s["id"], s["created"]) for s in result["sessions"]])
+
+    def test_a_fork_of_a_session_an_earlier_run_took_is_taken(self):
+        parent, records = self.parent(days=3)
+        first = dream.prepare(self.project, self.dream_session(days=2), started=NOW - timedelta(days=2))
+        self.assertEqual([s["id"] for s in first["sessions"]], [parent])
+        self.complete(first)
+        fork = self.fork(parent, records, "FORK FACT", at(hours=1))
+        later = dream.prepare(self.project, self.dream_session(), started=NOW)
+        self.assertEqual([s["id"] for s in later["sessions"]], [fork])
+
+    def test_a_fork_made_in_vs_code_holds_only_its_own_messages(self):
+        parent, records = self.parent(days=3)
+        sid = new_id()
+        copies = [  # as VS Code copies them: new uuids, each naming its original
+            {**r, "sessionId": sid, "uuid": new_id(), "forkedFrom": {"sessionId": parent, "messageUuid": r["uuid"]}}
+            for r in records
+        ]
+        self.write_log(sid, [*copies, user(sid, "FORK FACT", at(hours=1), uuid=new_id())])
+        text = self.transcript(sid)
+        self.assertIn("FORK FACT", text)
+        self.assertNotIn("PARENT FACT", text)
+
+    def test_a_fork_whose_original_is_gone_keeps_what_it_copied(self):
+        parent, records = self.parent(days=3)
+        fork = self.fork(parent, records, "FORK FACT", at(hours=1))
+        (self.logs / f"{parent}.jsonl").unlink()
+        text = self.transcript(fork)
+        self.assertIn("PARENT FACT", text)  # nothing else holds it any more
+        self.assertIn("FORK FACT", text)
+
+    def test_a_compacted_session_keeps_everything(self):
+        sid = new_id()
+        compacted = {"type": "derived-from", "v": 1, "sessionId": sid,
+                     "sessions": [{"type": "claude_code_session", "id": sid, "via": "compact"}]}
+        self.write_log(sid, [
+            user(sid, "BEFORE COMPACTING", at(hours=2), uuid=new_id()),
+            compacted,
+            user(sid, "AFTER COMPACTING", at(hours=1), uuid=new_id()),
+        ])
+        text = self.transcript(sid)
+        self.assertIn("BEFORE COMPACTING", text)
+        self.assertIn("AFTER COMPACTING", text)
+
+    def test_a_fork_of_a_dream_session_is_a_dream_session(self):
+        dream_sid, when = new_id(), at(hours=3)
+        records = [user(dream_sid, COMMAND, when, uuid=new_id()),
+                   assistant(dream_sid, [{"type": "text", "text": "Preparing."}], when, uuid=new_id())]
+        self.write_log(dream_sid, records)
+        fork = self.fork(dream_sid, records, "Something else", at(hours=1))
+        result = dream.prepare(self.project, None, dry_run=True, started=NOW)
+        self.assertNotIn(fork, [s["id"] for s in result["sessions"]])
+
+    def test_a_message_that_got_no_reply_is_a_conversation(self):
+        sid = new_id()
+        self.write_log(sid, [
+            user(sid, "A FACT, sent and then interrupted", at(minutes=3)),
+            user(sid, "[Request interrupted by user]", at(minutes=3)),
+            user(sid, COMMAND, at(minutes=1)),
+        ])
+        result = dream.prepare(self.project, sid, started=NOW)
+        self.assertEqual(result["status"], "refused")
+
+    def test_slash_commands_before_the_dream_are_not_a_conversation(self):
+        self.normal_session(hours=1)
+        sid = new_id()
+        self.write_log(sid, [
+            user(sid, "<command-name>/model</command-name>\n<command-message>model</command-message>", at(minutes=3)),
+            user(sid, "<local-command-stdout>Set model to opus</local-command-stdout>", at(minutes=3)),
+            user(sid, COMMAND, at(minutes=1)),
+        ])
+        result = dream.prepare(self.project, sid, started=NOW)
+        self.assertEqual(result["status"], "ready")
+        self.assertIn(sid, {s["id"] for s in result["skipped"]})
+
+    def test_what_claude_code_prints_for_a_command_is_not_the_users(self):
+        sid = new_id()
+        self.write_log(sid, [
+            user(sid, "BEFORE", at(hours=2)),
+            user(sid, "<local-command-stdout>Compacted (ctrl+o to see full summary)</local-command-stdout>", at(hours=2)),
+            user(sid, "AFTER", at(hours=1)),
+        ])
+        text = self.transcript(sid)
+        self.assertNotIn("Compacted", text)
+        self.assertIn("BEFORE", text)
+        self.assertIn("AFTER", text)
+
+    def test_command_output_is_left_out_but_the_rest_of_its_message_kept(self):
+        sid = new_id()
+        self.write_log(sid, [results(sid, [
+            {"type": "text", "text": "<local-command-stdout>Set model to opus</local-command-stdout>"},
+            {"type": "document", "title": "spec.txt", "source": {"type": "text", "media_type": "text/plain",
+                                                                 "data": "Production port: 7443"}},
+        ], at(hours=1))])
+        text = self.transcript(sid)
+        self.assertNotIn("Set model to opus", text)
+        self.assertIn("Production port: 7443", text)
+
+    def test_a_session_created_as_a_run_starts_is_the_next_runs(self):
+        at_start = new_id()
+        self.write_log(at_start, [user(at_start, "At the start", "2026-11-24T12:00:00.074Z")])
+        after = new_id()
+        self.write_log(after, [user(after, "Just after", "2026-11-24T12:00:01.500Z")])
+        first = dream.prepare(self.project, self.dream_session(), started=NOW + timedelta(microseconds=74900))
+        self.assertEqual(first["status"], "nothing")
+        later = dream.prepare(self.project, self.dream_session(), started=NOW + timedelta(hours=1))
+        self.assertEqual(sorted(s["id"] for s in later["sessions"]), sorted([at_start, after]))
+
+    @staticmethod
+    def linked(sid, *steps):
+        """Records linked as Claude Code links them: each (name, parent name or None, record) gets a uuid and
+        its parent's uuid."""
+        ids, out = {}, []
+        for name, parent, record in steps:
+            ids[name] = new_id()
+            out.append({**record, "uuid": ids[name], "parentUuid": ids[parent] if parent else None})
+        return out
+
+    def test_what_the_user_rewound_away_is_left_out(self):
+        sid, when = new_id(), at(hours=1)
+        self.write_log(sid, self.linked(
+            sid,
+            ("q", None, user(sid, "How many stations are there?", when)),
+            ("a", "q", assistant(sid, [{"type": "text", "text": "Three."}], when)),
+            ("gone", "a", user(sid, "Decision: remove the inlet station.", when)),
+            ("gone-reply", "gone", assistant(sid, [{"type": "text", "text": "Noted, inlet goes."}], when)),
+            ("new", "a", user(sid, "How many tests are there?", when)),
+            ("reply", "new", assistant(sid, [{"type": "text", "text": "Two."}], when)),
+        ))
+        text = self.transcript(sid)
+        for kept in ("How many stations", "Three.", "How many tests", "Two."):
+            self.assertIn(kept, text)
+        self.assertNotIn("remove the inlet", text)
+        self.assertNotIn("inlet goes", text)
+
+    def test_a_rewind_to_before_the_first_message_leaves_that_message_out(self):
+        sid, when = new_id(), at(hours=1)
+        self.write_log(sid, self.linked(
+            sid,
+            ("first", None, user(sid, "FIRST, taken back", when)),
+            ("first-reply", "first", assistant(sid, [{"type": "text", "text": "Ok."}], when)),
+            ("second", None, user(sid, "SECOND", when)),
+        ))
+        text = self.transcript(sid)
+        self.assertIn("SECOND", text)
+        self.assertNotIn("FIRST", text)
+
+    def test_parallel_tool_calls_keep_every_result(self):
+        sid, when = new_id(), at(hours=1)
+        self.write_log(sid, self.linked(
+            sid,
+            ("q", None, user(sid, "Read both files.", when)),
+            ("call-1", "q", assistant(sid, [{"type": "tool_use", "id": "t1", "name": "Read", "input": {}}], when)),
+            ("call-2", "call-1", assistant(sid, [{"type": "tool_use", "id": "t2", "name": "Read", "input": {}}], when)),
+            ("result-1", "call-1", results(sid, [{"type": "tool_result", "tool_use_id": "t1", "content": "RESULT ONE"}], when)),
+            ("skill", "result-1", user(sid, "A skill's body", when, isMeta=True)),
+            ("result-2", "call-2", results(sid, [{"type": "tool_result", "tool_use_id": "t2", "content": "RESULT TWO"}], when)),
+            ("done", "result-2", assistant(sid, [{"type": "text", "text": "Read both."}], when)),
+        ))
+        text = self.transcript(sid)
+        for kept in ("Read both files.", "RESULT ONE", "RESULT TWO", "Read both."):
+            self.assertIn(kept, text)
+
+    def test_a_compaction_keeps_what_came_before_it(self):
+        sid, when = new_id(), at(hours=1)
+        records = self.linked(
+            sid,
+            ("before", None, user(sid, "BEFORE COMPACTING", when)),
+            ("before-reply", "before", assistant(sid, [{"type": "text", "text": "Ok."}], when)),
+        )
+        boundary = {"type": "system", "subtype": "compact_boundary", "uuid": new_id(), "parentUuid": None,
+                    "logicalParentUuid": records[-1]["uuid"]}
+        summary = user(sid, "Summary of the conversation so far", when, isCompactSummary=True, uuid=new_id(),
+                       parentUuid=boundary["uuid"])
+        after = user(sid, "AFTER COMPACTING", when, uuid=new_id(), parentUuid=summary["uuid"])
+        self.write_log(sid, [*records, boundary, summary, after])
+        text = self.transcript(sid)
+        self.assertIn("BEFORE COMPACTING", text)
+        self.assertIn("AFTER COMPACTING", text)
+
+    def test_a_continued_session_gives_the_next_run_only_its_new_part(self):
+        sid = new_id()
+        earlier = [user(sid, "EARLIER FACT", at(hours=2)), assistant(sid, [{"type": "text", "text": "Ok."}], at(hours=2))]
+        self.write_log(sid, earlier)
+        self.complete(dream.prepare(self.project, self.dream_session(), started=NOW))
+        self.write_log(sid, [*earlier, user(sid, "CONTINUED FACT", at(minutes=-30))])  # reopened after that run
+        later = dream.prepare(self.project, self.dream_session(), started=NOW + timedelta(hours=1))
+        self.assertEqual([s["id"] for s in later["sessions"]], [sid])
+        text = Path(later["workflow_args"]["transcripts"][0]).read_text()
+        self.assertIn("CONTINUED FACT", text)
+        self.assertNotIn("EARLIER FACT", text)
+        self.assertIn("began before 2026-11-24T12:00:00.000Z; only what was said in it from then on is here", text)
+        self.complete(later)
+        again = dream.prepare(self.project, self.dream_session(), started=NOW + timedelta(hours=2))
+        self.assertEqual(again["status"], "nothing")
+
+    def test_what_a_session_says_while_a_run_runs_is_the_next_runs(self):
+        sid = new_id()
+        self.write_log(sid, [user(sid, "SAID BEFORE THE RUN", at(hours=1)), user(sid, "SAID DURING IT", at(minutes=-10))])
+        first = dream.prepare(self.project, self.dream_session(), started=NOW)
+        first_text = Path(first["workflow_args"]["transcripts"][0]).read_text()
+        self.assertIn("SAID BEFORE THE RUN", first_text)
+        self.assertNotIn("SAID DURING IT", first_text)
+        self.complete(first)
+        later = dream.prepare(self.project, self.dream_session(), started=NOW + timedelta(hours=1))
+        later_text = Path(later["workflow_args"]["transcripts"][0]).read_text()
+        self.assertIn("SAID DURING IT", later_text)
+        self.assertNotIn("SAID BEFORE THE RUN", later_text)
+
+    def test_a_session_of_bare_commands_is_not_a_conversation(self):
+        cleared = new_id()
+        self.write_log(cleared, [user(cleared, "<command-name>/clear</command-name>\n<command-message>clear</command-message>\n"
+                                               "<command-args></command-args>", at(hours=1))])
+        asked = new_id()
+        self.write_log(asked, [user(asked, "<command-name>/hstack:align</command-name>\n<command-message>hstack:align"
+                                           "</command-message>\n<command-args>add a metres flag</command-args>", at(hours=1))])
+        result = dream.prepare(self.project, None, dry_run=True, started=NOW)
+        self.assertEqual([s["id"] for s in result["sessions"]], [asked])
+        self.assertIn({"id": cleared, "reason": "no conversation"}, result["skipped"])
+
+    def test_a_message_typed_while_claude_works_is_kept(self):
+        sid, when = new_id(), at(hours=1)
+        queued = {"type": "attachment", "sessionId": sid, "timestamp": when, "attachment": {
+            "type": "queued_command", "prompt": [{"type": "text", "text": "TYPED WHILE IT WORKED"}],
+            "origin": {"kind": "human"}, "humanTurn": True, "commandMode": "prompt"}}
+        hand_back = {"type": "attachment", "sessionId": sid, "timestamp": when, "attachment": {
+            "type": "queued_command", "prompt": "AN AGENT'S HAND-BACK", "origin": {"kind": "peer"}, "isMeta": True}}
+        self.write_log(sid, [user(sid, "Start", when), queued, hand_back,
+                             assistant(sid, [{"type": "text", "text": "Yes."}], when)])
+        text = self.transcript(sid)
+        self.assertIn("TYPED WHILE IT WORKED", text)
+        self.assertNotIn("AN AGENT'S HAND-BACK", text)
+
+    def test_what_the_original_took_back_stays_in_a_fork_that_kept_it(self):
+        parent, when = new_id(), at(hours=3)
+        records = self.linked(
+            parent,
+            ("q", None, user(parent, "Question", when)),
+            ("a", "q", assistant(parent, [{"type": "text", "text": "Answer."}], when)),
+            ("decision", "a", user(parent, "DECISION THE FORK KEPT", when)),
+            ("ok", "decision", assistant(parent, [{"type": "text", "text": "Noted."}], when)),
+        )
+        fork = self.fork(parent, records, "The fork goes on", at(hours=2))
+        instead = user(parent, "Something else instead", at(hours=1), uuid=new_id(), parentUuid=records[1]["uuid"])
+        self.write_log(parent, [*records, instead])  # then the original rewinds past the decision
+        self.assertNotIn("DECISION THE FORK KEPT", self.transcript(parent))
+        self.assertIn("DECISION THE FORK KEPT", self.transcript(fork))
+
+    def test_a_subagent_working_after_its_session_went_quiet_is_taken(self):
+        sid = new_id()
+        log = self.write_log(sid, [user(sid, "Start a background agent.", at(hours=5))])
+        self.complete(dream.prepare(self.project, self.dream_session(), started=NOW))
+        agent = self.logs / sid / "subagents" / "agent-a1.jsonl"
+        agent.parent.mkdir(parents=True)
+        agent.write_text(json.dumps(user(sid, "THE AGENT'S LATER WORK", at(minutes=-30), isSidechain=True)) + "\n")
+        quiet = (NOW - timedelta(hours=5)).timestamp()
+        os.utime(log, (quiet, quiet))  # the session itself wrote nothing since the first run
+        later = dream.prepare(self.project, self.dream_session(), started=NOW + timedelta(hours=1))
+        self.assertEqual([s["id"] for s in later["sessions"]], [sid])
+        self.assertIn("THE AGENT'S LATER WORK", Path(later["workflow_args"]["transcripts"][0]).read_text())
+
+    def test_an_agent_launched_on_a_rewound_branch_is_left_out(self):
+        sid, when = new_id(), at(hours=1)
+        call = lambda tool_id: assistant(sid, [{"type": "tool_use", "id": tool_id, "name": "Agent", "input": {}}], when)
+        self.write_log(sid, self.linked(
+            sid,
+            ("first", None, user(sid, "Explore the parser.", when)),
+            ("gone-call", "first", call("toolu_gone")),
+            ("instead", None, user(sid, "Never mind. Explore the tests.", when)),  # rewound to before the first
+            ("kept-call", "instead", call("toolu_kept")),
+        ))
+        agents = self.logs / sid / "subagents"
+        agents.mkdir(parents=True)
+        for name, tool_id, text in (("a", "toolu_gone", "ABANDONED AGENT'S WORK"), ("b", "toolu_kept", "KEPT AGENT'S WORK")):
+            (agents / f"agent-{name}.jsonl").write_text(json.dumps(user(sid, text, when, isSidechain=True)) + "\n")
+            (agents / f"agent-{name}.meta.json").write_text(json.dumps({"agentType": "Explore", "toolUseId": tool_id}))
+        text = self.transcript(sid)
+        self.assertNotIn("ABANDONED AGENT'S WORK", text)
+        self.assertIn("KEPT AGENT'S WORK", text)
+
+    def test_a_rewind_followed_by_a_bare_command_still_leaves_the_branch_out(self):
+        sid, when = new_id(), at(hours=1)
+        bare = ("<command-name>/hstack:align</command-name>\n<command-message>hstack:align</command-message>\n"
+                "<command-args></command-args>")
+        self.write_log(sid, self.linked(
+            sid,
+            ("q", None, user(sid, "How many stations?", when)),
+            ("a", "q", assistant(sid, [{"type": "text", "text": "Three."}], when)),
+            ("gone", "a", user(sid, "Decision: remove the inlet station.", when)),
+            ("command", "a", user(sid, bare, when)),
+            ("reply", "command", assistant(sid, [{"type": "text", "text": "What should I check?"}], when)),
+        ))
+        text = self.transcript(sid)
+        self.assertNotIn("remove the inlet", text)
+        self.assertIn("What should I check?", text)
+
+    def test_a_rewind_followed_by_a_command_with_its_note_still_leaves_the_branch_out(self):
+        sid, when = new_id(), at(hours=1)
+        caveat = "<local-command-caveat>The command below was run directly in Claude Code.</local-command-caveat>"
+        self.write_log(sid, self.linked(
+            sid,
+            ("q", None, user(sid, "How many stations?", when)),
+            ("a", "q", assistant(sid, [{"type": "text", "text": "Three."}], when)),
+            ("gone", "a", user(sid, "Decision: remove the inlet station.", when)),
+            ("note", "a", user(sid, caveat, when, isMeta=True)),
+            ("command", "note", user(sid, "<command-name>/reload-plugins</command-name>", when)),
+            ("after", "command", user(sid, "How many tests?", when)),
+        ))
+        text = self.transcript(sid)
+        self.assertNotIn("remove the inlet", text)
+        self.assertIn("How many tests?", text)
+
+    def test_a_workflow_launched_on_a_rewound_branch_is_left_out(self):
+        sid, when = new_id(), at(hours=1)
+        launch = assistant(sid, [{"type": "tool_use", "id": "toolu_wf", "name": "Workflow", "input": {}}], when)
+        result = {**results(sid, [{"type": "tool_result", "tool_use_id": "toolu_wf", "content": "started"}], when),
+                  "toolUseResult": {"status": "async_launched", "runId": "wf_gone"}}
+        self.write_log(sid, self.linked(
+            sid,
+            ("first", None, user(sid, "Run the workflow.", when)),
+            ("launch", "first", launch),
+            ("result", "launch", result),
+            ("instead", None, user(sid, "Never mind.", when)),  # rewound to before the first message
+        ))
+        agents = self.logs / sid / "subagents" / "workflows" / "wf_gone"
+        agents.mkdir(parents=True)
+        (agents / "agent-w1.jsonl").write_text(json.dumps(user(sid, "THE WORKFLOW AGENT'S WORK", when, isSidechain=True)) + "\n")
+        (agents / "agent-w1.meta.json").write_text(json.dumps({"agentType": "general-purpose"}))
+        text = self.transcript(sid)
+        self.assertNotIn("THE WORKFLOW AGENT'S WORK", text)
+        self.assertIn("Never mind.", text)
+
+    def test_a_message_delivered_after_a_run_started_goes_to_the_next_run(self):
+        sid = new_id()
+        start = [user(sid, "Start", at(minutes=10)), assistant(sid, [{"type": "text", "text": "Working."}], at(minutes=10))]
+        self.write_log(sid, start)
+        self.complete(dream.prepare(self.project, self.dream_session(), started=NOW))
+        meanwhile = [  # what Claude wrote while the message waited, after the run started
+            assistant(sid, [{"type": "tool_use", "id": "t1", "name": "Bash", "input": {}}], at(minutes=-1)),
+            results(sid, [{"type": "tool_result", "tool_use_id": "t1", "content": "ok"}], at(minutes=-1)),
+        ]
+        queued = {"type": "attachment", "sessionId": sid, "timestamp": at(minutes=5), "attachment": {  # typed before
+            "type": "queued_command", "prompt": "TYPED BEFORE THE RUN, DELIVERED AFTER", "origin": {"kind": "human"}}}
+        self.write_log(sid, [*start, *meanwhile, queued])
+        later = dream.prepare(self.project, self.dream_session(), started=NOW + timedelta(hours=1))
+        self.assertEqual([s["id"] for s in later["sessions"]], [sid])
+        self.assertIn("TYPED BEFORE THE RUN, DELIVERED AFTER", Path(later["workflow_args"]["transcripts"][0]).read_text())
+
+    def test_a_rewind_followed_by_a_compaction_still_leaves_the_branch_out(self):
+        sid, when = new_id(), at(hours=1)
+        records = self.linked(
+            sid,
+            ("q", None, user(sid, "How many stations?", when)),
+            ("a", "q", assistant(sid, [{"type": "text", "text": "Three."}], when)),
+            ("gone", "a", user(sid, "Decision: remove the inlet station.", when)),
+        )
+        boundary = {"type": "system", "subtype": "compact_boundary", "uuid": new_id(), "parentUuid": None,
+                    "logicalParentUuid": records[1]["uuid"]}  # compacted right after rewinding to the answer
+        after = user(sid, "How many tests?", when, uuid=new_id(), parentUuid=boundary["uuid"])
+        self.write_log(sid, [*records, boundary, after])
+        text = self.transcript(sid)
+        self.assertNotIn("remove the inlet", text)
+        self.assertIn("How many tests?", text)
+
+    def test_a_forks_copies_keep_their_old_times_when_its_original_is_gone(self):
+        parent, records = self.parent(days=20)  # older than the first run's 14 days
+        sid = new_id()
+        bookkeeping = {"type": "queue-operation", "operation": "enqueue", "timestamp": at(hours=1), "sessionId": sid}
+        derived = {"type": "derived-from", "v": 1, "sessionId": sid,
+                   "sessions": [{"type": "claude_code_session", "id": parent, "via": "fork"}]}
+        copies = [{**r, "sessionId": sid} for r in records]
+        self.write_log(sid, [bookkeeping, derived, *copies, user(sid, "FORK FACT", at(hours=1), uuid=new_id())])
+        (self.logs / f"{parent}.jsonl").unlink()
+        prepared = dream.prepare(self.project, self.dream_session(), started=NOW)
+        text = Path(prepared["workflow_args"]["transcripts"][0]).read_text()
+        self.assertIn("FORK FACT", text)
+        self.assertNotIn("PARENT FACT", text)
+
+    def test_a_log_the_guard_cannot_write_never_keeps_its_decision_back(self):
+        dreaming = self.project / ".dreaming"
+        (dreaming / "state").mkdir(parents=True)
+        dreaming.chmod(0)
+        self.addCleanup(dreaming.chmod, 0o755)
+        hook = SCRIPTS.parents[2] / "hooks" / "dream_guard.py"
+        call = {"agent_type": "hstack:memory-organizer", "tool_name": "Bash", "cwd": str(self.project),
+                "tool_input": {"command": "true"}}
+        done = subprocess.run([sys.executable, str(hook)], input=json.dumps(call), capture_output=True, text=True,
+                              env={**os.environ, "CLAUDE_PROJECT_DIR": str(self.project)})
+        self.assertEqual(json.loads(done.stdout)["hookSpecificOutput"]["permissionDecision"], "deny")
+
+    def test_a_session_started_in_the_same_second_as_a_run_is_taken_once(self):
+        sid, when = new_id(), "2026-11-24T12:00:00.400Z"
+        self.write_log(sid, [user(sid, "Same second", when), assistant(sid, [{"type": "text", "text": "Ok."}], when)])
+        first = dream.prepare(self.project, self.dream_session(), started=NOW + timedelta(milliseconds=900))
+        self.assertIn(sid, [s["id"] for s in first["sessions"]])
+        self.complete(first)
+        later = dream.prepare(self.project, self.dream_session(), started=NOW + timedelta(hours=1))
+        self.assertNotIn(sid, [s["id"] for s in later.get("sessions", [])])
 
 
 if __name__ == "__main__":
